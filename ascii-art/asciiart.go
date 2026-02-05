@@ -1,111 +1,91 @@
 package asciiart
 
 import (
-	"bufio"
 	"os"
 	"strings"
 )
 
-// Public entry point
-func AsciiArt(text string, banner string) string {
-	lines, err := readFontFile(banner)
+const (
+	asciiStart      = 32  // Space character
+	asciiEnd        = 126 // Tilde character
+	characterHeight = 8
+	linesPerChar    = 9 // 8 art lines + 1 separator
+)
+
+// AsciiArt converts text to ASCII art using the specified banner file
+func AsciiArt(text string, bannerPath string) string {
+	// Load the banner font
+	fontMap, err := loadBanner(bannerPath)
 	if err != nil {
 		return ""
 	}
 
-	templates := parseTemplates(lines)
-	return printAscii(text, templates)
+	// Render the text
+	return render(text, fontMap)
 }
 
-// Reads the font file and returns its lines
-func readFontFile(path string) ([]string, error) {
-	file, err := os.Open(path)
+// loadBanner reads a banner file and returns a map of characters to their ASCII art
+func loadBanner(path string) (map[rune][]string, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
 
-	var lines []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	return lines, scanner.Err()
-}
-
-// Each character is 8 lines tall.
-// The font file has:
-// - 1 empty line at the top
-// - then blocks of 8 lines per character
-func parseTemplates(lines []string) [][]string {
-	var templates [][]string
-
-	// skip the first empty line
-	lines = lines[1:]
-
-	for i := 0; i+8 <= len(lines); i += 8 {
-		char := make([]string, 8)
-		copy(char, lines[i:i+8])
-		templates = append(templates, char)
+	lines := strings.Split(string(data), "\n")
+	
+	// Remove the first empty line
+	if len(lines) > 0 && lines[0] == "" {
+		lines = lines[1:]
 	}
 
-	return templates
+	fontMap := make(map[rune][]string)
+
+	// Each character has 8 lines of art followed by 1 separator line
+	for ascii := asciiStart; ascii <= asciiEnd; ascii++ {
+		index := (ascii - asciiStart) * linesPerChar
+		
+		if index+characterHeight > len(lines) {
+			break
+		}
+
+		// Extract the 8 lines for this character
+		charLines := make([]string, characterHeight)
+		for i := 0; i < characterHeight; i++ {
+			charLines[i] = lines[index+i]
+		}
+		
+		fontMap[rune(ascii)] = charLines
+	}
+
+	return fontMap, nil
 }
 
-func printAscii(text string, templates [][]string) string {
+// render converts the input text to ASCII art
+func render(text string, fontMap map[rune][]string) string {
+	// Normalize line endings
 	text = strings.ReplaceAll(text, "\r\n", "\n")
+	
 	lines := strings.Split(text, "\n")
+	var result strings.Builder
 
-	var b strings.Builder
-
-	for i, line := range lines {
+	for _, line := range lines {
 		if line == "" {
-			// Empty line = 8 empty rows
-			for j := 0; j < 8; j++ {
-				b.WriteByte('\n')
-			}
+			// Empty line - just add a newline
+			result.WriteString("\n")
 		} else {
-			b.WriteString(printLine(line, templates))
-			b.WriteByte('\n')
-		}
-
-		// Extra newline ONLY between ASCII blocks
-		if i < len(lines)-1 {
-			b.WriteByte('\n')
-		}
-	}
-
-	return strings.TrimRight(b.String(), "\n")
-}
-
-// Print a single line of text in ASCII art
-func printLine(s string, templates [][]string) string {
-	var b strings.Builder
-	indexes := returnIndex(s)
-
-	for row := 0; row < 8; row++ {
-		for _, index := range indexes {
-			if index >= 0 && index < len(templates) {
-				b.WriteString(templates[index][row])
+			// Render each of the 8 rows for this line of text
+			for row := 0; row < characterHeight; row++ {
+				for _, char := range line {
+					if artLines, exists := fontMap[char]; exists {
+						result.WriteString(artLines[row])
+					}
+				}
+				result.WriteString("\n")
 			}
 		}
-		b.WriteByte('\n')
 	}
 
-	return strings.TrimRight(b.String(), "\n")
-}
-
-// Returns the indexes of printable ASCII characters in the font templates
-func returnIndex(s string) []int {
-	indexes := make([]int, 0, len(s))
-
-	for _, r := range s {
-		// Only printable ASCII characters
-		if r < 32 || r > 126 {
-			continue
-		}
-		indexes = append(indexes, int(r-32))
-	}
-
-	return indexes
+	// Remove trailing newline
+	output := result.String()
+	return strings.TrimSuffix(output, "\n")
 }
