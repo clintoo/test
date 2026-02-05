@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	// "strings"
+	"strings"
 )
 
 type PageData struct {
@@ -28,19 +28,16 @@ func renderTemplate(w http.ResponseWriter, templateName string, data PageData) e
 	lp := filepath.Join("templates", "layout.html")
 	fp := filepath.Join("templates", templateName)
 
-	// Check if template file exists
+	// Check if template file exists and is not a directory
 	info, err := os.Stat(fp)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return err
-		}
 		return err
 	}
-	
 	if info.IsDir() {
 		return os.ErrNotExist
 	}
 
+	// Parse and execute template
 	tmpl, err := template.ParseFiles(lp, fp)
 	if err != nil {
 		return err
@@ -56,6 +53,20 @@ func renderError(w http.ResponseWriter, status int, templateName string) {
 	if err != nil {
 		log.Printf("Error rendering %s: %v\n", templateName, err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+// renderEmptyInputError renders the main page with an error message for empty input
+func renderEmptyInputError(w http.ResponseWriter, banner string) {
+	data := PageData{
+		Results:       "",
+		InputText:     "",
+		SelectedStyle: banner,
+		Error:         "Please enter some text to convert to ASCII art.",
+	}
+	if err := renderTemplate(w, "index.html", data); err != nil {
+		log.Printf("Error rendering template: %v\n", err)
+		renderError(w, http.StatusInternalServerError, "serverError.html")
 	}
 }
 
@@ -93,15 +104,28 @@ func ServeTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// validateInput checks if the input contains only printable ASCII characters
+// validateInput checks if the input contains only printable ASCII characters and newlines
 func validateInput(text string) bool {
 	for _, char := range text {
-		// Allow newlines and printable ASCII (32-126)
-		if char != '\n' && char != '\r' && (char < 32 || char > 126) {
+		// Allow newlines (\n, \r) and printable ASCII (space to tilde: 32-126)
+		isNewline := char == '\n' || char == '\r'
+		isPrintable := char >= 32 && char <= 126
+		isBackslash := char == '\\'
+		
+		if !isNewline && !isPrintable && !isBackslash {
 			return false
 		}
 	}
 	return true
+}
+
+// interpretEscapeSequences converts escape sequences like \n, \t, etc. to their actual characters
+func interpretEscapeSequences(text string) string {
+	// Replace common escape sequences
+	text = strings.ReplaceAll(text, "\\n", "\n")
+	text = strings.ReplaceAll(text, "\\t", "\t")
+	text = strings.ReplaceAll(text, "\\r", "\r")
+	return text
 }
 
 // HandleAsciiArt handles POST /ascii-art - generates ASCII art
@@ -119,8 +143,22 @@ func HandleAsciiArt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userText := r.FormValue("text")
+	userTextRaw := r.FormValue("text")
 	banner := r.FormValue("fontstyle")
+
+	// Validate that banner is selected (set default if empty)
+	if banner == "" {
+		banner = "standard"
+	}
+
+	// Check if input is empty or only whitespace
+	if strings.TrimSpace(userTextRaw) == "" {
+		renderEmptyInputError(w, banner)
+		return
+	}
+
+	// Interpret escape sequences like \n, \t, etc. for rendering only
+	userText := interpretEscapeSequences(userTextRaw)
 
 	// Validate banner selection
 	if !allowedBanners[banner] {
@@ -130,7 +168,7 @@ func HandleAsciiArt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate input text (only printable ASCII + newlines)
-	if !validateInput(userText) {
+	if !validateInput(userTextRaw) {
 		log.Println("Input contains invalid characters")
 		renderError(w, http.StatusBadRequest, "notFound.html")
 		return
@@ -147,8 +185,8 @@ func HandleAsciiArt(w http.ResponseWriter, r *http.Request) {
 	// Generate ASCII art
 	asciiArtResult := asciiart.AsciiArt(userText, bannerPath)
 	
-	// Check if generation failed
-	if asciiArtResult == "" && userText != "" {
+	// Check if generation failed (empty result when input was not empty)
+	if asciiArtResult == "" && strings.TrimSpace(userText) != "" {
 		log.Println("ASCII art generation failed")
 		renderError(w, http.StatusInternalServerError, "serverError.html")
 		return
@@ -156,7 +194,7 @@ func HandleAsciiArt(w http.ResponseWriter, r *http.Request) {
 
 	data := PageData{
 		Results:       template.HTML(asciiArtResult),
-		InputText:     userText,
+		InputText:     userTextRaw,
 		SelectedStyle: banner,
 		Error:         "",
 	}

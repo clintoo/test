@@ -6,10 +6,10 @@ import (
 )
 
 const (
-	asciiStart      = 32  // Space character
-	asciiEnd        = 126 // Tilde character
-	characterHeight = 8
-	linesPerChar    = 9 // 8 art lines + 1 separator
+	asciiStart      = 32  // Space character (first printable ASCII)
+	asciiEnd        = 126 // Tilde character (last printable ASCII)
+	characterHeight = 8   // Each ASCII art character is 8 lines tall
+	linesPerChar    = 9   // 8 art lines + 1 separator line per character
 )
 
 // AsciiArt converts text to ASCII art using the specified banner file
@@ -31,9 +31,12 @@ func loadBanner(path string) (map[rune][]string, error) {
 		return nil, err
 	}
 
-	lines := strings.Split(string(data), "\n")
+	// Normalize line endings (handle both \r\n and \n)
+	content := strings.ReplaceAll(string(data), "\r\n", "\n")
+	content = strings.ReplaceAll(content, "\r", "\n")
+	lines := strings.Split(content, "\n")
 	
-	// Remove the first empty line
+	// Remove the first empty line if present
 	if len(lines) > 0 && lines[0] == "" {
 		lines = lines[1:]
 	}
@@ -44,6 +47,7 @@ func loadBanner(path string) (map[rune][]string, error) {
 	for ascii := asciiStart; ascii <= asciiEnd; ascii++ {
 		index := (ascii - asciiStart) * linesPerChar
 		
+		// Ensure we have enough lines for this character
 		if index+characterHeight > len(lines) {
 			break
 		}
@@ -62,16 +66,23 @@ func loadBanner(path string) (map[rune][]string, error) {
 
 // render converts the input text to ASCII art
 func render(text string, fontMap map[rune][]string) string {
-	// Normalize line endings
+	if text == "" {
+		return ""
+	}
+
+	// Normalize line endings (handle both \r\n and \n)
 	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
 	
 	lines := strings.Split(text, "\n")
 	var result strings.Builder
 
 	for _, line := range lines {
 		if line == "" {
-			// Empty line - just add a newline
-			result.WriteString("\n")
+			// Empty line - output 8 empty rows to match character height
+			for row := 0; row < characterHeight; row++ {
+				result.WriteString("\n")
+			}
 		} else {
 			// Render each of the 8 rows for this line of text
 			for row := 0; row < characterHeight; row++ {

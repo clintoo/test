@@ -11,6 +11,12 @@
     </ol>
   </div>
 
+{{if .Error}}
+<div class="error-message">
+  <p>{{.Error}}</p>
+</div>
+{{end}}
+
 <form action="/ascii-art" method="POST">
   <div class="buttons">
     <input type="radio" id="standard" name="fontstyle" value="standard" {{if eq .SelectedStyle "standard"

@@ -127,6 +127,23 @@ pre {
   line-height: 1.5;
 }
 
+/* ===== Error message (for input validation) ===== */
+.error-message {
+  max-width: 700px;
+  margin: 0 auto 1.5rem;
+  padding: 1rem 1.5rem;
+  background: #2d1a1a;
+  border: 1px solid #ff5555;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.error-message p {
+  color: #ffaaaa;
+  font-size: 1rem;
+  margin: 0;
+}
+
 /* ===== ASCII output spacing ===== */
 .asciioutput {
   max-width: 90%;
